@@ -1,0 +1,13 @@
+{
+  "type": "module",
+  "name": "eye-maze",
+  "private": true,
+  "scripts": {
+    "start": "node tests/serve.mjs 8000",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser-game.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.16.0"
+  }
+}

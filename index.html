@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EYE MAZE</title>
+<meta name="description" content="A maze you steer with your eyes. Webcam gaze tracking runs locally in your browser.">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2304060a'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%235ff2ff'/%3E%3C/svg%3E">
+</head>
+<body>
+<canvas id="stage" aria-label="Maze"></canvas>
+<!-- the camera feed is only read by the on-device model; it is never shown full-size, recorded or uploaded -->
+<video id="cam" playsinline muted autoplay></video>
+
+<!-- HUD -->
+<header id="hud" hidden>
+  <div class="hud-left">
+    <span class="hud-level" id="hud-level">LEVEL 1</span>
+    <span class="hud-name" id="hud-name"></span>
+  </div>
+  <div class="hud-center" id="hud-hint"></div>
+  <div class="hud-right">
+    <span class="hud-mode" id="hud-mode" hidden title="maze mode">↔</span>
+    <span class="hud-time" id="hud-time">0:00</span>
+    <span class="track-dot" id="track-dot" title="tracking"></span>
+    <button class="ghost small" id="btn-recal" title="Recalibrate">recalibrate</button>
+    <button class="ghost small" id="btn-debug" title="Debug panel (D)">debug</button>
+  </div>
+</header>
+
+<!-- START -->
+<section class="screen" id="screen-start">
+  <div class="panel">
+    <div class="logo"><span class="logo-eye"></span>EYE&nbsp;MAZE</div>
+    <p class="lede">Steer a point of light through the maze with your eyes.</p>
+    <ol class="howto">
+      <li><b>Look</b> left, right, up or down — the ball rolls that way.</li>
+      <li><b>Look at the centre</b> of the screen — the ball stops.</li>
+      <li>Keep your <b>head still</b>; only your eyes steer.</li>
+    </ol>
+    <p class="note">Your camera is processed locally in this browser by an on-device face model. Video is never recorded, stored or uploaded.</p>
+    <p class="warn" id="proto-warn" hidden></p>
+    <div class="actions">
+      <button class="primary" id="btn-start">Start with camera</button>
+    </div>
+    <p class="tiny">Best with a laptop webcam at eye level, about an arm's length away, face evenly lit. <a href="?test" id="link-test">Test mode (keyboard, no camera)</a></p>
+  </div>
+</section>
+
+<!-- PERMISSION / LOADING -->
+<section class="screen" id="screen-permission" hidden>
+  <div class="panel">
+    <div class="spinner"></div>
+    <h2 id="perm-title">Camera access</h2>
+    <p id="perm-msg">Your browser will ask to use the camera. Choose <b>Allow</b>.</p>
+    <div class="actions" id="perm-actions" hidden>
+      <button class="primary" id="btn-retry">Try again</button>
+    </div>
+  </div>
+</section>
+
+<!-- POSITION -->
+<section class="screen" id="screen-position" hidden>
+  <div class="panel">
+    <h2>Find your position</h2>
+    <div class="preview-wrap"><canvas id="preview" width="320" height="240"></canvas><div class="oval"></div></div>
+    <p class="status" id="pos-status">Looking for your face…</p>
+    <p class="tiny">Preview shown only to help you line up. Centre your face in the oval, eyes roughly level with the top of the screen.</p>
+    <div class="actions"><button class="primary" id="btn-pos-go" disabled>Calibrate</button></div>
+  </div>
+</section>
+
+<!-- CALIBRATION + CHECK (full-screen layer) -->
+<div id="calib" hidden>
+  <div class="cal-step"></div>
+  <div class="cal-text"></div>
+  <div class="cal-sub"></div>
+  <div class="cal-headmeter" hidden></div>
+  <div class="cal-dot"><svg class="cal-ring" viewBox="0 0 50 50"><circle class="bg" cx="25" cy="25" r="22"/><circle class="fg" cx="25" cy="25" r="22"/></svg></div>
+  <div class="cal-arrow" data-dir="left">‹</div>
+  <div class="cal-arrow" data-dir="right">‹</div>
+  <div class="cal-arrow" data-dir="up">‹</div>
+  <div class="cal-arrow" data-dir="down">‹</div>
+  <div class="cal-cursor" hidden></div>
+</div>
+
+<!-- CALIBRATION RESULT -->
+<section class="screen" id="screen-calresult" hidden>
+  <div class="panel">
+    <h2 id="cr-title">Calibration</h2>
+    <p id="cr-msg"></p>
+    <ul class="issues" id="cr-issues"></ul>
+    <div class="actions">
+      <button class="ghost" id="btn-cr-retry">Recalibrate</button>
+      <button class="primary" id="btn-cr-go">Continue</button>
+    </div>
+  </div>
+</section>
+
+<!-- READY: gaze-only start -->
+<section class="screen clear" id="screen-ready" hidden>
+  <div class="ready">
+    <div class="ready-title" id="ready-title">LEVEL 1</div>
+    <div class="ready-name" id="ready-name"></div>
+    <div class="ready-hint" id="ready-hint"></div>
+    <div class="ready-ring"><svg viewBox="0 0 50 50"><circle class="bg" cx="25" cy="25" r="22"/><circle class="fg" id="ready-fg" cx="25" cy="25" r="22"/></svg></div>
+    <div class="ready-sub" id="ready-sub">Look at the centre to begin</div>
+  </div>
+</section>
+
+<!-- PAUSE (tracking problem) -->
+<div id="pause" hidden>
+  <div class="pause-box">
+    <div class="pause-title" id="pause-title">Tracking paused</div>
+    <div class="pause-msg" id="pause-msg"></div>
+  </div>
+</div>
+
+<!-- SUCCESS -->
+<section class="screen" id="screen-success" hidden>
+  <div class="panel">
+    <div class="logo small"><span class="logo-eye green"></span>OUT</div>
+    <h2 id="succ-title">You found the way out.</h2>
+    <ul class="times" id="succ-times"></ul>
+    <div class="ready-ring"><svg viewBox="0 0 50 50"><circle class="bg" cx="25" cy="25" r="22"/><circle class="fg" id="succ-fg" cx="25" cy="25" r="22"/></svg></div>
+    <p class="tiny">Look at the centre for 2 seconds to play again — or</p>
+    <div class="actions">
+      <button class="ghost" id="btn-succ-recal">Recalibrate</button>
+      <button class="primary" id="btn-succ-again">Play again</button>
+    </div>
+  </div>
+</section>
+
+<!-- DEBUG PANEL (optional) -->
+<aside id="debug" hidden>
+  <div class="dbg-head">DEBUG <span class="dbg-src" id="dbg-src"></span></div>
+  <canvas id="dbg-preview" width="200" height="150"></canvas>
+  <div class="dbg-dir" id="dbg-dir">—</div>
+  <div class="dbg-row"><span>state</span><b id="dbg-state">—</b></div>
+  <div class="dbg-row"><span>confidence</span><div class="bar"><i id="dbg-conf"></i></div><b id="dbg-confv"></b></div>
+  <div class="dbg-row"><span>gaze x</span><div class="bar axis"><i id="dbg-x"></i><em class="th" id="dbg-thx"></em></div><b id="dbg-xv"></b></div>
+  <div class="dbg-row"><span>gaze y</span><div class="bar axis"><i id="dbg-y"></i><em class="th" id="dbg-thy"></em></div><b id="dbg-yv"></b></div>
+  <div class="dbg-row"><span>head Δ</span><b id="dbg-head">—</b></div>
+  <div class="dbg-row"><span>calib q</span><b id="dbg-q">—</b></div>
+  <div class="dbg-row"><span>fps</span><b id="dbg-fps">—</b></div>
+  <label class="dbg-slider">sensitivity <input type="range" id="sl-sens" min="0.6" max="1.6" step="0.05" value="1"><b id="sl-sens-v">1.00</b></label>
+  <label class="dbg-slider">smoothing <input type="range" id="sl-smooth" min="0.3" max="4" step="0.1" value="1.2"><b id="sl-smooth-v">1.2</b></label>
+  <label class="dbg-slider">speed <input type="range" id="sl-speed" min="0.5" max="1.8" step="0.05" value="1"><b id="sl-speed-v">1.00</b></label>
+  <div class="dbg-foot">confidence is a heuristic (stability × head pose × calibration quality), not a model score.</div>
+</aside>
+
+<div id="toast" hidden></div>
+
+<script>
+  // ES modules and the camera do not work from file:// — explain instead of failing silently
+  if (location.protocol === 'file:') {
+    document.addEventListener('DOMContentLoaded', function () {
+      var w = document.getElementById('proto-warn');
+      w.hidden = false;
+      w.innerHTML = 'This page was opened as a file. Browsers block the camera and JavaScript modules there. Run a local server in this folder (for example <b>python3 -m http.server 8000</b>) and open <b>http://localhost:8000</b> — see README.md.';
+      document.getElementById('btn-start').disabled = true;
+    });
+  }
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
